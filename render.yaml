@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: neuralforge
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        generateValue: false
+      - key: OPENROUTER_API_KEY
+        sync: false          # Set this manually in Render dashboard
+      - key: MODEL
+        value: google/gemma-2-4b-it
+      - key: SITE_URL
+        sync: false          # Set to your Render URL after first deploy
