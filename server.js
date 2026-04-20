@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const WORKSPACE = path.join(process.cwd(), 'workspace');
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
-const MODEL = process.env.MODEL || 'google/gemma-3n-e4b-it:free';
+const MODEL = process.env.MODEL || 'openrouter/free';
 // ── Workspace bootstrap ────────────────────────────────────────────────────
 
 fs.ensureDirSync(WORKSPACE);
