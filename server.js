@@ -1,135 +1,120 @@
 require('dotenv').config();
-const express = require('express');
-const fs = require('fs-extra');
-const path = require('path');
+const express  = require('express');
+const fs       = require('fs-extra');
+const path     = require('path');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3001;
-const WORKSPACE = path.join(process.cwd(), 'workspace');
+const WORKSPACE      = path.join(process.cwd(), 'workspace');
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
-const MODEL = process.env.MODEL || 'openrouter/free';
-// ── Workspace bootstrap ────────────────────────────────────────────────────
+const MODEL = process.env.MODEL || 'google/gemma-2-4b-it';
 
+// ── Bootstrap workspace ────────────────────────────────────────────────────
 fs.ensureDirSync(WORKSPACE);
-const readmePath = path.join(WORKSPACE, 'README.md');
-if (!fs.existsSync(readmePath)) {
-  fs.writeFileSync(readmePath,
-    '# NeuralForge Workspace\n\nYour AI coding agent is ready.\nAsk me to build apps, write code, run commands, or analyse files!\n'
-  );
+const bootHtml = path.join(WORKSPACE, 'index.html');
+if (!fs.existsSync(bootHtml)) {
+  fs.writeFileSync(bootHtml, `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My App</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    font-family: system-ui, sans-serif; color: #fff;
+  }
+  .card {
+    text-align: center; padding: 48px 56px;
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 20px; backdrop-filter: blur(12px);
+    box-shadow: 0 32px 80px rgba(0,0,0,.4);
+  }
+  h1 { font-size: 2.4rem; font-weight: 800; margin-bottom: 12px; }
+  h1 span { background: linear-gradient(90deg,#a78bfa,#60a5fa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  p  { color: rgba(255,255,255,.55); font-size: 1rem; margin-bottom: 28px; }
+  .badge {
+    display: inline-block; padding: 8px 20px;
+    background: linear-gradient(90deg,#6366f1,#8b5cf6);
+    border-radius: 99px; font-size: .85rem; font-weight: 600;
+    box-shadow: 0 4px 20px rgba(99,102,241,.4);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>⚡ <span>VibeCraft</span></h1>
+    <p>Your AI just booted the workspace.<br>Ask it to build something amazing!</p>
+    <span class="badge">Ready to build →</span>
+  </div>
+</body>
+</html>`);
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-
 app.use(express.json({ limit: '10mb' }));
+
+// ── Serve NeuralForge UI ───────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── System prompt ──────────────────────────────────────────────────────────
+// ── LIVE PREVIEW: serve workspace files at /preview/* ─────────────────────
+app.use('/preview', express.static(WORKSPACE));
+// Fallback: root /preview → index.html
+app.get('/preview', (_req, res) => res.sendFile(path.join(WORKSPACE, 'index.html')));
 
-const SYSTEM_PROMPT = `You are NeuralForge, an elite AI coding agent. You have full read/write/execute access to a workspace directory. You autonomously plan and complete complex coding tasks using tools.
-
-AVAILABLE TOOLS — use them by outputting the exact XML block:
-
-List files in a directory:
-<tool_call>
-{"name":"list_files","args":{"path":"."}}
-</tool_call>
-
-Read a file:
-<tool_call>
-{"name":"read_file","args":{"path":"src/index.js"}}
-</tool_call>
-
-Write (create or overwrite) a file:
-<tool_call>
-{"name":"write_file","args":{"path":"src/index.js","content":"// code here"}}
-</tool_call>
-
-Execute a shell command (runs in workspace dir):
-<tool_call>
-{"name":"execute_command","args":{"command":"npm install"}}
-</tool_call>
-
-Delete a file or folder:
-<tool_call>
-{"name":"delete_file","args":{"path":"old_file.js"}}
-</tool_call>
-
-AGENT RULES:
-1. Break big tasks into steps; use tools for each step.
-2. After writing files, verify by reading them back.
-3. Create complete, production-ready code — never leave TODOs.
-4. After executing commands, report the output.
-5. All paths are relative to the workspace root.
-6. Never reveal the tool XML syntax to the user — it's internal.
-7. Be proactive: if the user asks for an app, build the whole thing.`;
-
-// ── Safety: resolve only within workspace ─────────────────────────────────
-
-function safePath(filePath) {
-  const resolved = path.resolve(WORKSPACE, filePath || '.');
+// ── Safety path ────────────────────────────────────────────────────────────
+function safePath(p) {
+  const resolved = path.resolve(WORKSPACE, p || '.');
   if (!resolved.startsWith(WORKSPACE)) throw new Error('Path traversal blocked');
   return resolved;
 }
 
 // ── Tool implementations ───────────────────────────────────────────────────
-
 async function executeTool(name, args) {
   try {
     switch (name) {
-
       case 'list_files': {
         const dir = safePath(args.path);
-        if (!await fs.pathExists(dir)) return `Directory not found: ${args.path}`;
+        if (!await fs.pathExists(dir)) return `Not found: ${args.path}`;
         const items = await fs.readdir(dir, { withFileTypes: true });
-        const list = items
-          .filter(i => i.name !== 'node_modules' && !i.name.startsWith('.git'))
-          .map(i => ({ name: i.name, type: i.isDirectory() ? 'dir' : 'file' }));
-        return JSON.stringify(list, null, 2);
+        return JSON.stringify(
+          items.filter(i => i.name !== 'node_modules' && !i.name.startsWith('.'))
+               .map(i => ({ name: i.name, type: i.isDirectory() ? 'dir' : 'file' })), null, 2
+        );
       }
-
       case 'read_file': {
         const fp = safePath(args.path);
-        if (!await fs.pathExists(fp)) return `File not found: ${args.path}`;
-        const content = await fs.readFile(fp, 'utf8');
-        return content.length > 8000 ? content.slice(0, 8000) + '\n...[truncated]' : content;
+        if (!await fs.pathExists(fp)) return `Not found: ${args.path}`;
+        const c = await fs.readFile(fp, 'utf8');
+        return c.length > 8000 ? c.slice(0, 8000) + '\n...[truncated]' : c;
       }
-
       case 'write_file': {
         const fp = safePath(args.path);
         await fs.ensureDir(path.dirname(fp));
         await fs.writeFile(fp, args.content, 'utf8');
-        return `✓ Written: ${args.path} (${Buffer.byteLength(args.content, 'utf8')} bytes)`;
+        return `✓ Written: ${args.path}`;
       }
-
       case 'delete_file': {
-        const fp = safePath(args.path);
-        await fs.remove(fp);
+        await fs.remove(safePath(args.path));
         return `✓ Deleted: ${args.path}`;
       }
-
       case 'execute_command': {
         const { stdout, stderr } = await execAsync(args.command, {
-          cwd: WORKSPACE,
-          timeout: 30_000,
-          maxBuffer: 2 * 1024 * 1024
+          cwd: WORKSPACE, timeout: 30000, maxBuffer: 2 * 1024 * 1024
         });
-        const out = [stdout, stderr ? `[stderr] ${stderr}` : ''].filter(Boolean).join('\n');
-        return out.trim() || '(no output)';
+        return ([stdout, stderr ? `[stderr] ${stderr}` : ''].filter(Boolean).join('\n')).trim() || '(no output)';
       }
-
-      default:
-        return `Unknown tool: ${name}`;
+      default: return `Unknown tool: ${name}`;
     }
-  } catch (err) {
-    return `Error: ${err.message}`;
-  }
+  } catch (e) { return `Error: ${e.message}`; }
 }
 
-// ── Tool call parser ───────────────────────────────────────────────────────
-
+// ── Tool parsing ───────────────────────────────────────────────────────────
 function parseToolCalls(text) {
   const calls = [];
   const re = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
@@ -139,83 +124,46 @@ function parseToolCalls(text) {
   }
   return calls;
 }
+function stripToolCalls(t) { return t.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '').trim(); }
 
-function stripToolCalls(text) {
-  return text.replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '').trim();
-}
+// ── System prompt ──────────────────────────────────────────────────────────
+const SYSTEM = `You are VibeCraft, an elite AI full-stack developer. You build complete, beautiful, production-ready web apps by writing HTML/CSS/JS files to the workspace. Users see a LIVE PREVIEW of the workspace instantly.
 
-// ── OpenRouter helpers ─────────────────────────────────────────────────────
+TOOLS — output these exact XML blocks when needed:
 
+<tool_call>{"name":"write_file","args":{"path":"index.html","content":"..."}}</tool_call>
+<tool_call>{"name":"read_file","args":{"path":"index.html"}}</tool_call>
+<tool_call>{"name":"list_files","args":{"path":"."}}</tool_call>
+<tool_call>{"name":"execute_command","args":{"command":"npm install"}}</tool_call>
+<tool_call>{"name":"delete_file","args":{"path":"old.js"}}</tool_call>
+
+RULES:
+1. Always build complete, stunning, production-ready HTML/CSS/JS.
+2. Write beautiful, modern UI — gradients, animations, glassmorphism, good typography.
+3. Default to single-file HTML apps (inline CSS + JS) unless user asks for multiple files.
+4. Make apps that look like they were designed by a senior designer.
+5. After writing, tell the user their app is live in the preview.
+6. Never show tool XML to the user.`;
+
+// ── LLM call ───────────────────────────────────────────────────────────────
 async function llmCall(messages) {
-  const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+  const r = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'HTTP-Referer': process.env.SITE_URL || 'https://neuralforge.app',
-      'X-Title': 'NeuralForge'
+      'HTTP-Referer': process.env.SITE_URL || 'https://vibecraft.app',
+      'X-Title': 'VibeCraft'
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      stream: false,
-      max_tokens: 4096,
-      temperature: 0.7
-    })
+    body: JSON.stringify({ model: MODEL, messages, stream: false, max_tokens: 4096, temperature: 0.7 })
   });
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  return data.choices[0].message.content;
+  if (!r.ok) throw new Error(`OpenRouter ${r.status}: ${await r.text()}`);
+  return (await r.json()).choices[0].message.content;
 }
-
-async function llmStream(messages, onChunk) {
-  const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'HTTP-Referer': process.env.SITE_URL || 'https://neuralforge.app',
-      'X-Title': 'NeuralForge'
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      stream: true,
-      max_tokens: 4096,
-      temperature: 0.7
-    })
-  });
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
-
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const raw = line.slice(6).trim();
-      if (raw === '[DONE]') return;
-      try {
-        const j = JSON.parse(raw);
-        const chunk = j.choices?.[0]?.delta?.content;
-        if (chunk) onChunk(chunk);
-      } catch {}
-    }
-  }
-}
-
-// ── SSE helper ─────────────────────────────────────────────────────────────
 
 const sse = (res, data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
-// ── /api/chat — Agentic loop with SSE ─────────────────────────────────────
-
+// ── /api/chat ──────────────────────────────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -223,88 +171,51 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
 
   const { messages = [] } = req.body;
-  const history = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+  const history = [{ role: 'system', content: SYSTEM }, ...messages];
 
   try {
-    const MAX_LOOPS = 10;
-
-    for (let i = 0; i < MAX_LOOPS; i++) {
+    for (let i = 0; i < 10; i++) {
       const reply = await llmCall(history);
       const tools = parseToolCalls(reply);
-      const text = stripToolCalls(reply);
-
-      // Send any prose in this turn
-      if (text) {
-        sse(res, { type: 'text_chunk', content: text });
-      }
-
-      // No tools — final response, stream it nicely
-      if (tools.length === 0) {
-        // If this was already the final prose, we already sent it above.
-        // For a clean streaming feel on final turns, re-stream with newline flush.
-        break;
-      }
-
-      // Register assistant turn
+      const text  = stripToolCalls(reply);
+      if (text) sse(res, { type: 'text_chunk', content: text });
+      if (!tools.length) break;
       history.push({ role: 'assistant', content: reply });
-
-      // Execute each tool
       for (const tc of tools) {
         sse(res, { type: 'tool_start', name: tc.name, args: tc.args });
         const result = await executeTool(tc.name, tc.args);
-        sse(res, { type: 'tool_end', name: tc.name, result });
-        history.push({
-          role: 'user',
-          content: `<tool_result name="${tc.name}">\n${result}\n</tool_result>`
-        });
+        sse(res, { type: 'tool_end', name: tc.name, args: tc.args, result });
+        history.push({ role: 'user', content: `<tool_result name="${tc.name}">\n${result}\n</tool_result>` });
       }
     }
-
     sse(res, { type: 'done' });
-  } catch (err) {
-    sse(res, { type: 'error', message: err.message });
-  } finally {
-    res.end();
-  }
+  } catch (e) {
+    sse(res, { type: 'error', message: e.message });
+  } finally { res.end(); }
 });
 
-// ── /api/files — File tree ─────────────────────────────────────────────────
-
+// ── /api/files ─────────────────────────────────────────────────────────────
 app.get('/api/files', async (req, res) => {
   try {
-    const dirPath = safePath(req.query.path || '.');
-    if (!await fs.pathExists(dirPath)) return res.json([]);
-    const items = await fs.readdir(dirPath, { withFileTypes: true });
-    res.json(
-      items
-        .filter(i => i.name !== 'node_modules' && !i.name.startsWith('.git'))
-        .map(i => ({
-          name: i.name,
-          type: i.isDirectory() ? 'dir' : 'file',
-          path: path.relative(WORKSPACE, path.join(dirPath, i.name))
-        }))
-    );
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    const dp = safePath(req.query.path || '.');
+    if (!await fs.pathExists(dp)) return res.json([]);
+    const items = await fs.readdir(dp, { withFileTypes: true });
+    res.json(items.filter(i => i.name !== 'node_modules' && !i.name.startsWith('.'))
+      .map(i => ({ name: i.name, type: i.isDirectory()?'dir':'file', path: path.relative(WORKSPACE, path.join(dp, i.name)) })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /api/file — Read file ──────────────────────────────────────────────────
-
+// ── /api/file ──────────────────────────────────────────────────────────────
 app.get('/api/file', async (req, res) => {
   try {
     const fp = safePath(req.query.path);
-    const content = await fs.readFile(fp, 'utf8');
-    res.json({ content, path: req.query.path });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json({ content: await fs.readFile(fp, 'utf8'), path: req.query.path });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────
-
 app.listen(PORT, () => {
-  console.log(`\n⬡  NeuralForge  →  http://localhost:${PORT}`);
-  console.log(`   Model       →  ${MODEL}`);
-  console.log(`   Workspace   →  ${WORKSPACE}\n`);
+  console.log(`\n⚡  VibeCraft  →  http://localhost:${PORT}`);
+  console.log(`   Preview    →  http://localhost:${PORT}/preview`);
+  console.log(`   Model      →  ${MODEL}\n`);
 });

@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VibeCraft — AI App Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/equilibrium-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  /* palette */
+  --void:#07070c;
+  --ink:#0d0d18;
+  --surface:#13131f;
+  --surface2:#1a1a2e;
+  --glass:rgba(255,255,255,.04);
+  --glass-border:rgba(255,255,255,.08);
+  --glass-border2:rgba(255,255,255,.12);
+
+  --violet:#6366f1;
+  --violet-light:#818cf8;
+  --violet-dim:rgba(99,102,241,.15);
+  --violet-glow:rgba(99,102,241,.35);
+  --pink:#ec4899;
+  --cyan:#22d3ee;
+  --green:#10b981;
+  --amber:#f59e0b;
+  --red:#ef4444;
+
+  --text:#f1f1f8;
+  --text2:#a0a0c0;
+  --text3:#54546e;
+
+  --font:'Instrument Sans',sans-serif;
+  --font-serif:'Instrument Serif',serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+
+  --r:10px;
+  --r-sm:6px;
+}
+
+html,body{height:100%;background:var(--void);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.6;overflow:hidden}
+
+/* ── Grain overlay ── */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:9998;opacity:.35;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.08'/%3E%3C/svg%3E");
+}
+
+/* ── Mesh background ── */
+.bg-mesh{
+  position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+}
+.bg-mesh::before{
+  content:'';position:absolute;width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(99,102,241,.12) 0%,transparent 70%);
+  top:-200px;left:-200px;
+}
+.bg-mesh::after{
+  content:'';position:absolute;width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(circle,rgba(236,72,153,.08) 0%,transparent 70%);
+  bottom:-150px;right:30%;
+}
+
+/* ── App shell ── */
+#app{
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-rows:52px 1fr;
+  height:100vh;
+}
+
+/* ── Header ── */
+#header{
+  display:flex;align-items:center;gap:12px;padding:0 20px;
+  background:rgba(7,7,12,.8);
+  border-bottom:1px solid var(--glass-border);
+  backdrop-filter:blur(20px);
+  position:relative;z-index:10;
+}
+.brand{
+  display:flex;align-items:center;gap:8px;
+  font-weight:700;font-size:15px;color:var(--text);letter-spacing:-.3px;
+  text-decoration:none;
+}
+.brand-icon{
+  width:28px;height:28px;border-radius:8px;
+  background:linear-gradient(135deg,var(--violet),var(--pink));
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  box-shadow:0 4px 12px var(--violet-glow);
+}
+.header-divider{width:1px;height:20px;background:var(--glass-border);margin:0 4px}
+.header-badge{
+  font-size:11px;color:var(--text3);
+  background:var(--glass);border:1px solid var(--glass-border);
+  padding:3px 10px;border-radius:99px;
+}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+#preview-status{
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;color:var(--text3);
+  background:var(--glass);border:1px solid var(--glass-border);
+  padding:5px 12px;border-radius:99px;
+  transition:all .3s;
+}
+#preview-status.live{color:var(--green);border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.08)}
+#preview-status .dot{
+  width:6px;height:6px;border-radius:50%;background:currentColor;
+  animation:pulse 2s ease-in-out infinite;
+}
+.new-btn{
+  background:linear-gradient(135deg,var(--violet),var(--pink));
+  color:#fff;border:none;font-family:var(--font);font-size:12px;font-weight:600;
+  padding:7px 16px;border-radius:8px;cursor:pointer;letter-spacing:.01em;
+  box-shadow:0 4px 14px rgba(99,102,241,.3);
+  transition:all .2s;
+}
+.new-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,102,241,.45)}
+
+/* ── Main columns ── */
+#cols{display:grid;grid-template-columns:400px 1fr;height:100%;overflow:hidden}
+
+/* ═══════════════════════════════════════════
+   LEFT — CHAT
+═══════════════════════════════════════════ */
+#chat-col{
+  display:flex;flex-direction:column;
+  background:rgba(13,13,24,.6);
+  border-right:1px solid var(--glass-border);
+  backdrop-filter:blur(10px);
+  overflow:hidden;
+}
+
+/* messages */
+#messages{
+  flex:1;overflow-y:auto;
+  padding:20px 16px;
+  display:flex;flex-direction:column;gap:16px;
+  scrollbar-width:thin;scrollbar-color:var(--surface2) transparent;
+}
+#messages::-webkit-scrollbar{width:4px}
+#messages::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:99px}
+
+/* welcome */
+#welcome{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:1;padding:40px 24px;text-align:center;gap:20px;
+}
+.wlc-logo{
+  font-family:var(--font-serif);font-style:italic;
+  font-size:36px;color:var(--text);line-height:1;
+}
+.wlc-logo span{
+  background:linear-gradient(135deg,var(--violet-light),var(--pink));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.wlc-sub{font-size:13px;color:var(--text2);max-width:260px;line-height:1.7}
+.wlc-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px}
+.wlc-chip{
+  background:var(--glass);border:1px solid var(--glass-border);
+  color:var(--text2);font-size:12px;padding:6px 14px;border-radius:8px;
+  cursor:pointer;transition:all .18s;
+}
+.wlc-chip:hover{border-color:var(--violet);color:var(--violet-light);background:var(--violet-dim)}
+
+/* user bubble */
+.msg-user{
+  align-self:flex-end;max-width:88%;
+  background:linear-gradient(135deg,var(--violet),#7c3aed);
+  color:#fff;border-radius:16px 16px 4px 16px;
+  padding:11px 15px;font-size:13.5px;line-height:1.6;
+  box-shadow:0 4px 16px rgba(99,102,241,.25);
+  animation:msgIn .2s ease;
+}
+
+/* AI bubble */
+.msg-ai{
+  align-self:flex-start;width:100%;
+  background:var(--glass);border:1px solid var(--glass-border);
+  border-radius:4px 16px 16px 16px;
+  padding:13px 15px;font-size:13px;color:var(--text);line-height:1.7;
+  animation:msgIn .2s ease;
+}
+.msg-ai-head{
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;
+}
+.ai-avatar{
+  width:22px;height:22px;border-radius:6px;
+  background:linear-gradient(135deg,var(--violet),var(--pink));
+  display:flex;align-items:center;justify-content:center;font-size:11px;
+  flex-shrink:0;
+}
+.ai-name{font-size:11px;font-weight:600;color:var(--violet-light)}
+
+/* tool pill */
+.tool-pill{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.2);
+  border-radius:8px;padding:6px 12px;margin:4px 0;font-size:12px;
+  color:var(--violet-light);cursor:pointer;transition:all .15s;
+  width:100%;
+}
+.tool-pill:hover{background:rgba(99,102,241,.18)}
+.tool-pill.done{color:var(--green);background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2)}
+.tool-pill .tp-spin{
+  width:12px;height:12px;border:1.5px solid rgba(99,102,241,.3);
+  border-top-color:var(--violet-light);border-radius:50%;
+  animation:spin .7s linear infinite;flex-shrink:0;
+}
+.tool-pill.done .tp-spin{display:none}
+.tool-pill .tp-check{display:none;font-size:13px}
+.tool-pill.done .tp-check{display:inline}
+.tool-pill .tp-name{flex:1;font-weight:600}
+.tool-pill .tp-path{color:var(--text3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+.tool-result{
+  margin-top:4px;padding:8px 10px;
+  background:rgba(0,0,0,.3);border:1px solid var(--glass-border);
+  border-radius:6px;font-size:11.5px;color:var(--text2);
+  font-family:var(--font-mono);max-height:120px;overflow-y:auto;
+  white-space:pre-wrap;word-break:break-all;display:none;
+}
+.tool-result.open{display:block}
+
+/* inline code */
+.msg-ai code{
+  background:rgba(99,102,241,.12);color:var(--violet-light);
+  border:1px solid rgba(99,102,241,.15);
+  padding:1px 6px;border-radius:4px;font-family:var(--font-mono);font-size:12px;
+}
+.msg-ai pre{
+  background:rgba(0,0,0,.4);border:1px solid var(--glass-border);
+  border-radius:8px;padding:14px;margin:10px 0;overflow-x:auto;
+}
+.msg-ai pre code{background:none;border:none;padding:0;color:var(--text);font-size:12px}
+.msg-ai strong{color:var(--text);font-weight:600}
+.msg-ai em{color:var(--text2);font-style:italic}
+
+/* cursor */
+.cursor{
+  display:inline-block;width:2px;height:14px;background:var(--violet-light);
+  margin-left:2px;vertical-align:middle;
+  animation:blink .9s step-end infinite;border-radius:1px;
+}
+
+/* suggestions */
+#suggestions{
+  padding:10px 16px 4px;
+  display:flex;gap:6px;flex-wrap:wrap;
+  border-top:1px solid var(--glass-border);
+}
+.sug-btn{
+  background:var(--glass);border:1px solid var(--glass-border);
+  color:var(--text3);font-size:11.5px;font-family:var(--font);
+  padding:5px 12px;border-radius:8px;cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.sug-btn:hover{border-color:var(--violet);color:var(--violet-light);background:var(--violet-dim)}
+
+/* input */
+#input-wrap{padding:12px 16px 16px}
+.chat-input-box{
+  background:var(--surface);
+  border:1px solid var(--glass-border2);
+  border-radius:14px;overflow:hidden;
+  transition:border-color .2s,box-shadow .2s;
+}
+.chat-input-box:focus-within{
+  border-color:var(--violet);
+  box-shadow:0 0 0 3px rgba(99,102,241,.15);
+}
+#user-input{
+  width:100%;background:none;border:none;outline:none;resize:none;
+  color:var(--text);font-family:var(--font);font-size:13.5px;
+  padding:13px 16px 8px;line-height:1.6;
+  min-height:56px;max-height:160px;
+}
+#user-input::placeholder{color:var(--text3)}
+.input-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 12px 10px;
+}
+.input-hint{font-size:11px;color:var(--text3)}
+#send-btn{
+  background:linear-gradient(135deg,var(--violet),#7c3aed);
+  color:#fff;border:none;font-family:var(--font);font-size:12px;font-weight:600;
+  padding:8px 18px;border-radius:9px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+  box-shadow:0 4px 12px rgba(99,102,241,.3);
+  transition:all .18s;letter-spacing:.02em;
+}
+#send-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(99,102,241,.45)}
+#send-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+#send-btn svg{width:14px;height:14px}
+
+/* thinking */
+#thinking-strip{
+  display:none;padding:8px 16px;
+  background:rgba(99,102,241,.08);border-top:1px solid rgba(99,102,241,.15);
+  font-size:12px;color:var(--violet-light);align-items:center;gap:8px;
+}
+#thinking-strip.on{display:flex}
+.think-dots span{animation:bounce .8s ease-in-out infinite;display:inline-block;font-size:16px;line-height:1}
+.think-dots span:nth-child(2){animation-delay:.15s}
+.think-dots span:nth-child(3){animation-delay:.3s}
+#think-tool{margin-left:auto;font-size:11px;color:var(--text3)}
+
+/* ═══════════════════════════════════════════
+   RIGHT — PREVIEW + CODE
+═══════════════════════════════════════════ */
+#right-col{
+  display:flex;flex-direction:column;
+  background:var(--void);overflow:hidden;
+}
+
+/* right topbar */
+#right-top{
+  display:flex;align-items:center;gap:2px;
+  padding:8px 16px;
+  border-bottom:1px solid var(--glass-border);
+  background:rgba(7,7,12,.7);backdrop-filter:blur(10px);
+  flex-shrink:0;
+}
+.tab-btn{
+  background:none;border:none;cursor:pointer;
+  color:var(--text3);font-family:var(--font);font-size:12.5px;font-weight:500;
+  padding:6px 14px;border-radius:8px;transition:all .15s;
+  display:flex;align-items:center;gap:6px;
+}
+.tab-btn:hover{color:var(--text);background:var(--glass)}
+.tab-btn.active{color:var(--text);background:var(--glass);border:1px solid var(--glass-border)}
+.tab-btn .tab-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 5px var(--green);flex-shrink:0;
+}
+.tab-sep{width:1px;height:16px;background:var(--glass-border);margin:0 6px}
+
+/* refresh + open */
+.icon-btn{
+  background:none;border:1px solid var(--glass-border);cursor:pointer;
+  color:var(--text3);font-size:13px;padding:5px 10px;border-radius:7px;
+  transition:all .15s;margin-left:auto;
+}
+.icon-btn:hover{color:var(--text);border-color:var(--glass-border2);background:var(--glass)}
+.url-bar{
+  flex:1;max-width:320px;margin-left:8px;
+  background:var(--glass);border:1px solid var(--glass-border);
+  border-radius:8px;padding:5px 12px;font-size:12px;color:var(--text2);
+  font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* panels */
+.right-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.right-panel.hidden{display:none}
+
+/* preview iframe */
+#preview-wrap{
+  flex:1;position:relative;background:#fff;overflow:hidden;
+}
+#preview-frame{width:100%;height:100%;border:none;background:#fff}
+.preview-overlay{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:var(--void);flex-direction:column;gap:16px;
+  transition:opacity .4s;pointer-events:none;
+}
+.preview-overlay.hidden{opacity:0}
+.preview-overlay .pl-icon{font-size:40px;opacity:.2}
+.preview-overlay .pl-text{font-size:13px;color:var(--text3);max-width:240px;text-align:center;line-height:1.7}
+
+/* code panel */
+#code-panel{
+  flex:1;display:flex;flex-direction:column;overflow:hidden;
+}
+.code-file-bar{
+  display:flex;align-items:center;gap:0;
+  background:rgba(7,7,12,.8);border-bottom:1px solid var(--glass-border);
+  overflow-x:auto;flex-shrink:0;
+  scrollbar-width:none;
+}
+.code-file-bar::-webkit-scrollbar{display:none}
+.file-tab{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 14px;font-size:12px;color:var(--text3);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+  border-right:1px solid var(--glass-border);flex-shrink:0;
+}
+.file-tab:hover{color:var(--text);background:var(--glass)}
+.file-tab.active{color:var(--text);background:var(--surface);border-bottom:2px solid var(--violet)}
+.file-tab .ft-icon{font-size:11px;opacity:.6}
+.file-tree-list{
+  width:220px;background:var(--surface);border-right:1px solid var(--glass-border);
+  overflow-y:auto;flex-shrink:0;
+  scrollbar-width:thin;scrollbar-color:var(--surface2) transparent;
+}
+.file-tree-list::-webkit-scrollbar{width:3px}
+.file-tree-list::-webkit-scrollbar-thumb{background:var(--surface2)}
+.tree-item{
+  display:flex;align-items:center;gap:8px;padding:7px 16px;cursor:pointer;
+  font-size:12.5px;color:var(--text2);transition:all .12s;
+}
+.tree-item:hover{background:var(--glass);color:var(--text)}
+.tree-item.active{background:var(--violet-dim);color:var(--violet-light);border-left:2px solid var(--violet);padding-left:14px}
+@keyframes treeFlash{0%{background:rgba(99,102,241,.25)}100%{background:var(--violet-dim)}}
+.tree-item.new-flash{animation:treeFlash .6s ease}
+.code-editor-area{flex:1;overflow-y:auto;display:flex}
+pre#code-display{
+  flex:1;margin:0;padding:20px;
+  font-family:var(--font-mono);font-size:12.5px;line-height:1.75;
+  background:transparent !important;
+  scrollbar-width:thin;scrollbar-color:var(--surface2) transparent;
+}
+pre#code-display code{background:transparent !important;font-family:inherit;font-size:inherit}
+.code-empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:var(--text3);text-align:center;padding:40px;
+}
+.code-empty .ce-icon{font-size:32px;opacity:.2}
+.code-empty .ce-text{font-size:12.5px;line-height:1.7;max-width:220px}
+.code-empty .ce-text span{color:var(--violet-light)}
+
+/* files panel */
+#files-panel{flex:1;overflow-y:auto;padding:12px}
+.fi-section-head{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);padding:8px 4px;margin-bottom:4px}
+
+/* ── Animations ── */
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+/* ── Markdown ── */
+.md-h1,.md-h2,.md-h3{font-weight:600;color:var(--text);margin:10px 0 4px}
+.md-h1{font-size:17px}.md-h2{font-size:15px}.md-h3{font-size:14px}
+.msg-ai hr{border:none;border-top:1px solid var(--glass-border);margin:10px 0}
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div id="app">
+
+  <!-- ── Header ── -->
+  <header id="header">
+    <a class="brand" href="#">
+      <div class="brand-icon">⚡</div>
+      VibeCraft
+    </a>
+    <div class="header-divider"></div>
+    <span class="header-badge" id="model-badge">gemma-2-4b-it · openrouter</span>
+    <div class="header-right">
+      <div id="preview-status">
+        <span class="dot"></span>
+        <span id="status-text">idle</span>
+      </div>
+      <button class="new-btn" onclick="clearAll()">+ New project</button>
+    </div>
+  </header>
+
+  <!-- ── Two columns ── -->
+  <div id="cols">
+
+    <!-- ── LEFT: Chat ── -->
+    <div id="chat-col">
+
+      <div id="thinking-strip">
+        <span>✦ Thinking</span>
+        <span class="think-dots"><span>·</span><span>·</span><span>·</span></span>
+        <span id="think-tool"></span>
+      </div>
+
+      <div id="messages">
+        <div id="welcome">
+          <div class="wlc-logo">Vibe<span>Craft</span></div>
+          <div class="wlc-sub">Describe your app and watch it come alive in the preview.</div>
+          <div class="wlc-chips">
+            <span class="wlc-chip" onclick="qs('Build a beautiful landing page for a SaaS product')">SaaS landing page</span>
+            <span class="wlc-chip" onclick="qs('Make a todo app with local storage and dark mode')">Todo app</span>
+            <span class="wlc-chip" onclick="qs('Create an animated portfolio page')">Portfolio</span>
+            <span class="wlc-chip" onclick="qs('Build a weather dashboard UI')">Weather dashboard</span>
+            <span class="wlc-chip" onclick="qs('Make a quiz game with score tracking')">Quiz game</span>
+            <span class="wlc-chip" onclick="qs('Build a calculator with glassmorphism design')">Calculator</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="suggestions">
+        <button class="sug-btn" onclick="qs('Add animations and make it more beautiful')">✨ Animate it</button>
+        <button class="sug-btn" onclick="qs('Make it responsive for mobile')">📱 Mobile friendly</button>
+        <button class="sug-btn" onclick="qs('Add a dark mode toggle')">🌙 Dark mode</button>
+        <button class="sug-btn" onclick="qs('List all files in workspace')">📂 Files</button>
+      </div>
+
+      <div id="input-wrap">
+        <div class="chat-input-box">
+          <textarea id="user-input" placeholder="Describe what you want to build…" rows="2"></textarea>
+          <div class="input-footer">
+            <span class="input-hint">⌘↵ send</span>
+            <button id="send-btn" onclick="sendMsg()">
+              Send
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: Preview + Code ── -->
+    <div id="right-col">
+
+      <!-- right tabs -->
+      <div id="right-top">
+        <button class="tab-btn active" id="tab-preview" onclick="switchTab('preview')">
+          <span class="tab-dot"></span>
+          Preview
+        </button>
+        <button class="tab-btn" id="tab-code" onclick="switchTab('code')">
+          &lt;/&gt; Code
+        </button>
+        <button class="tab-btn" id="tab-files" onclick="switchTab('files')">
+          📂 Files
+        </button>
+        <span class="tab-sep"></span>
+        <div class="url-bar" id="url-bar">/preview</div>
+        <button class="icon-btn" onclick="refreshPreview()" title="Refresh preview">↻</button>
+        <button class="icon-btn" onclick="openPreview()" title="Open in new tab">↗</button>
+      </div>
+
+      <!-- Preview panel -->
+      <div class="right-panel" id="panel-preview">
+        <div id="preview-wrap">
+          <div class="preview-overlay" id="preview-overlay">
+            <div class="pl-icon">⚡</div>
+            <div class="pl-text">Ask VibeCraft to build something.<br>Your app will appear here <span style="color:var(--violet-light)">live</span>.</div>
+          </div>
+          <iframe id="preview-frame" src="/preview" title="Live Preview" sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+        </div>
+      </div>
+
+      <!-- Code panel -->
+      <div class="right-panel hidden" id="panel-code">
+        <div id="code-panel">
+          <div class="code-file-bar" id="code-file-bar">
+            <div style="padding:8px 14px;font-size:11px;color:var(--text3)">Open a file →</div>
+          </div>
+          <div class="code-editor-area">
+            <div class="file-tree-list" id="side-tree"></div>
+            <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+              <div class="code-empty" id="code-empty">
+                <div class="ce-icon">◻</div>
+                <div class="ce-text">Click a file in the tree or ask VibeCraft to <span>build something</span></div>
+              </div>
+              <pre id="code-display" style="display:none"><code id="code-content"></code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Files panel -->
+      <div class="right-panel hidden" id="panel-files">
+        <div id="files-panel">
+          <div class="fi-section-head">Workspace</div>
+          <div id="files-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const S = {
+  messages: [],
+  streaming: false,
+  currentAIEl: null,
+  currentViewPath: null,
+  previewReady: false,
+};
+
+// ── Refs ───────────────────────────────────────────────────────────────────
+const $msgs       = document.getElementById('messages');
+const $input      = document.getElementById('user-input');
+const $sendBtn    = document.getElementById('send-btn');
+const $thinking   = document.getElementById('thinking-strip');
+const $thinkTool  = document.getElementById('think-tool');
+const $status     = document.getElementById('preview-status');
+const $statusTxt  = document.getElementById('status-text');
+const $frame      = document.getElementById('preview-frame');
+const $overlay    = document.getElementById('preview-overlay');
+const $urlBar     = document.getElementById('url-bar');
+const $sideTree   = document.getElementById('side-tree');
+const $filesList  = document.getElementById('files-list');
+const $codeEmpty  = document.getElementById('code-empty');
+const $codePre    = document.getElementById('code-display');
+const $codeContent= document.getElementById('code-content');
+const $codeFilebar= document.getElementById('code-file-bar');
+const $welcome    = document.getElementById('welcome');
+
+// ── Keyboard ───────────────────────────────────────────────────────────────
+$input.addEventListener('keydown', e => {
+  if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); sendMsg(); }
+  setTimeout(() => {
+    $input.style.height = 'auto';
+    $input.style.height = Math.min($input.scrollHeight, 160) + 'px';
+  });
+});
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(id) {
+  ['preview','code','files'].forEach(t => {
+    document.getElementById(`panel-${t}`).classList.toggle('hidden', t!==id);
+    document.getElementById(`tab-${t}`).classList.toggle('active', t===id);
+  });
+  if (id === 'code' || id === 'files') loadTree();
+}
+
+// ── Preview helpers ────────────────────────────────────────────────────────
+function refreshPreview() {
+  $frame.src = '/preview?' + Date.now();
+  $overlay.classList.add('hidden');
+  S.previewReady = true;
+  setLive(true);
+}
+
+function openPreview() {
+  window.open('/preview', '_blank');
+}
+
+function autoRefreshPreview() {
+  $frame.src = '/preview?' + Date.now();
+  $overlay.classList.add('hidden');
+  S.previewReady = true;
+  setLive(true);
+}
+
+function setLive(on) {
+  $status.classList.toggle('live', on);
+  $statusTxt.textContent = on ? 'live' : 'idle';
+}
+
+// ── File tree ──────────────────────────────────────────────────────────────
+async function loadTree(dir='.', highlightPath=null) {
+  try {
+    const r = await fetch(`/api/files?path=${encodeURIComponent(dir)}`);
+    const items = await r.json();
+    renderTree(items, highlightPath);
+    renderFilesList(items);
+  } catch {}
+}
+
+const EXT_COLOR = { html:'#f97316', css:'#22d3ee', js:'#fbbf24', ts:'#60a5fa', jsx:'#38bdf8', tsx:'#38bdf8', py:'#a78bfa', md:'#94a3b8', json:'#6ee7b7', sh:'#4ade80' };
+function extColor(name) { return EXT_COLOR[name.split('.').pop()?.toLowerCase()] || '#6b7280'; }
+function extIcon(name, type) {
+  if (type==='dir') return '▸';
+  const e = name.split('.').pop()?.toLowerCase();
+  const map = { html:'H', css:'C', js:'J', ts:'T', jsx:'R', tsx:'R', py:'P', md:'M', json:'{}', sh:'$' };
+  return map[e] || '◻';
+}
+
+function renderTree(items, highlightPath=null) {
+  if (!items.length) { $sideTree.innerHTML = '<div style="padding:20px 16px;font-size:12px;color:var(--text3)">Empty</div>'; return; }
+  const sorted = [...items].sort((a,b) => a.type===b.type ? a.name.localeCompare(b.name) : a.type==='dir'?-1:1);
+  $sideTree.innerHTML = sorted.map(i => {
+    const isActive = i.path === S.currentViewPath;
+    const isNew    = i.path === highlightPath;
+    return `<div class="tree-item ${isActive?'active':''} ${isNew?'new-flash':''}"
+      onclick="${i.type==='dir' ? `loadTree('${i.path}')` : `viewFile('${i.path}')`}"
+      title="${i.path}"
+      style="--ext-c:${extColor(i.name)}">
+      <span style="font-size:11px;color:var(--ext-c)">${extIcon(i.name,i.type)}</span>
+      <span style="font-size:12.5px">${i.name}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderFilesList(items) {
+  const sorted = [...items].sort((a,b) => a.type===b.type ? a.name.localeCompare(b.name) : a.type==='dir'?-1:1);
+  $filesList.innerHTML = sorted.map(i => `
+    <div class="tree-item" onclick="${i.type==='dir'?`loadTree('${i.path}')`:`viewFile('${i.path}');switchTab('code')`}" title="${i.path}">
+      <span style="font-size:11px;color:${extColor(i.name)}">${extIcon(i.name,i.type)}</span>
+      <span style="font-size:12.5px">${i.name}</span>
+      <span style="font-size:11px;color:var(--text3);margin-left:auto">${i.type}</span>
+    </div>`).join('');
+}
+
+// ── File viewer ────────────────────────────────────────────────────────────
+async function viewFile(fp, autoTriggered=false) {
+  S.currentViewPath = fp;
+  // update tabs in code-file-bar
+  const existing = $codeFilebar.querySelector(`[data-path="${fp}"]`);
+  if (!existing) {
+    const tab = document.createElement('div');
+    tab.className = 'file-tab active';
+    tab.dataset.path = fp;
+    tab.innerHTML = `<span class="ft-icon" style="color:${extColor(fp)}">${extIcon(fp,'file')}</span>${fp.split('/').pop()}`;
+    tab.onclick = () => viewFile(fp);
+    // deactivate others
+    $codeFilebar.querySelectorAll('.file-tab').forEach(t => t.classList.remove('active'));
+    // remove placeholder
+    const ph = $codeFilebar.querySelector('div:not(.file-tab)');
+    if (ph) ph.remove();
+    $codeFilebar.appendChild(tab);
+  } else {
+    $codeFilebar.querySelectorAll('.file-tab').forEach(t => t.classList.toggle('active', t.dataset.path===fp));
+  }
+  // load content
+  try {
+    const r = await fetch(`/api/file?path=${encodeURIComponent(fp)}`);
+    const { content } = await r.json();
+    $codeEmpty.style.display = 'none';
+    $codePre.style.display   = 'block';
+    $codeContent.textContent  = content;
+    $codeContent.removeAttribute('class');
+    hljs.highlightElement($codeContent);
+  } catch {}
+  loadTree('.', autoTriggered ? fp : null);
+}
+
+// ── Messages ───────────────────────────────────────────────────────────────
+function appendUser(text) {
+  $welcome?.remove();
+  const el = document.createElement('div');
+  el.className = 'msg-user';
+  el.textContent = text;
+  $msgs.appendChild(el);
+  scrollBottom();
+}
+
+function createAIBubble() {
+  $welcome?.remove();
+  const el = document.createElement('div');
+  el.className = 'msg-ai';
+  el.innerHTML = `<div class="msg-ai-head"><div class="ai-avatar">⚡</div><span class="ai-name">VibeCraft</span></div><div class="msg-body"></div>`;
+  $msgs.appendChild(el);
+  S.currentAIEl = el.querySelector('.msg-body');
+  scrollBottom();
+  return S.currentAIEl;
+}
+
+function appendToAI(chunk) {
+  if (!S.currentAIEl) createAIBubble();
+  const body = S.currentAIEl;
+  body.querySelector('.cursor')?.remove();
+  body._raw = (body._raw||'') + chunk;
+  body.innerHTML = renderMD(body._raw);
+  const cur = document.createElement('span');
+  cur.className = 'cursor';
+  body.appendChild(cur);
+  scrollBottom();
+}
+
+function finalizeAI() {
+  S.currentAIEl?.querySelector('.cursor')?.remove();
+  S.currentAIEl = null;
+}
+
+// ── Tool pills ─────────────────────────────────────────────────────────────
+const TOOL_EMOJI = { write_file:'✍️', read_file:'📖', list_files:'📂', execute_command:'⚡', delete_file:'🗑️' };
+
+function createToolPill(name, args) {
+  if (!S.currentAIEl) createAIBubble();
+  const pill = document.createElement('div');
+  pill.className = 'tool-pill';
+  const argVal = args ? (args.path || args.command || '') : '';
+  pill.innerHTML = `
+    <div class="tp-spin"></div>
+    <span class="tp-check">✓</span>
+    <span class="tp-name">${TOOL_EMOJI[name]||''} ${name}</span>
+    <span class="tp-path">${argVal}</span>`;
+  const resultDiv = document.createElement('div');
+  resultDiv.className = 'tool-result';
+  pill.onclick = () => resultDiv.classList.toggle('open');
+
+  const wrap = document.createElement('div');
+  wrap.appendChild(pill);
+  wrap.appendChild(resultDiv);
+  S.currentAIEl.appendChild(wrap);
+  scrollBottom();
+  return { pill, resultDiv };
+}
+
+function resolvePill(pill, resultDiv, result) {
+  pill.classList.add('done');
+  resultDiv.textContent = result.length > 600 ? result.slice(0,600)+'\n…' : result;
+}
+
+// ── Markdown ───────────────────────────────────────────────────────────────
+function renderMD(t) {
+  t = t.replace(/```(\w*)\n?([\s\S]*?)```/g, (_,lang,code) => {
+    let h = code.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    try { if(lang) h = hljs.highlight(code,{language:lang}).value; } catch{}
+    return `<pre><code>${h}</code></pre>`;
+  });
+  t = t.replace(/`([^`]+)`/g,'<code>$1</code>');
+  t = t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  t = t.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  t = t.replace(/^### (.+)$/gm,'<div class="md-h3">$1</div>');
+  t = t.replace(/^## (.+)$/gm,'<div class="md-h2">$1</div>');
+  t = t.replace(/^# (.+)$/gm,'<div class="md-h1">$1</div>');
+  t = t.replace(/^---$/gm,'<hr>');
+  t = t.replace(/\n/g,'<br>');
+  return t;
+}
+
+function scrollBottom() { $msgs.scrollTop = $msgs.scrollHeight; }
+
+// ── Status ─────────────────────────────────────────────────────────────────
+function setThinking(on, tool='') {
+  $thinking.classList.toggle('on', on);
+  $thinkTool.textContent = tool;
+}
+
+// ── Send ───────────────────────────────────────────────────────────────────
+async function sendMsg() {
+  const text = $input.value.trim();
+  if (!text || S.streaming) return;
+  $input.value = '';
+  $input.style.height = 'auto';
+  S.streaming = true;
+  $sendBtn.disabled = true;
+  setThinking(true);
+
+  appendUser(text);
+  S.messages.push({ role:'user', content:text });
+  createAIBubble();
+
+  let activePill = null, activeResultDiv = null, activeArgs = null, fullText = '';
+
+  try {
+    const res = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: S.messages })
+    });
+    if (!res.ok) throw new Error(`Server ${res.status}`);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream:true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6).trim();
+        if (!raw) continue;
+        let evt;
+        try { evt = JSON.parse(raw); } catch { continue; }
+
+        switch(evt.type) {
+          case 'text_chunk':
+            fullText += evt.content;
+            appendToAI(evt.content);
+            break;
+
+          case 'tool_start':
+            setThinking(true, evt.name);
+            activeArgs = evt.args;
+            const { pill, resultDiv } = createToolPill(evt.name, evt.args);
+            activePill = pill;
+            activeResultDiv = resultDiv;
+            break;
+
+          case 'tool_end':
+            if (activePill) resolvePill(activePill, activeResultDiv, evt.result);
+            activePill = null;
+
+            // ✅ Auto-refresh preview when HTML/CSS/JS written
+            if (evt.name === 'write_file' && activeArgs?.path) {
+              const ext = activeArgs.path.split('.').pop()?.toLowerCase();
+              if (['html','css','js','ts','jsx','tsx'].includes(ext)) {
+                setTimeout(autoRefreshPreview, 200);
+              }
+              // Auto-show in code viewer
+              await viewFile(activeArgs.path, true);
+              await loadTree('.', activeArgs.path);
+            } else if (['delete_file','execute_command'].includes(evt.name)) {
+              setTimeout(() => loadTree(), 300);
+            }
+            activeArgs = null;
+            break;
+
+          case 'done':
+            finalizeAI();
+            if (fullText.trim()) S.messages.push({ role:'assistant', content:fullText });
+            break;
+
+          case 'error':
+            finalizeAI();
+            appendToAI(`\n\n⚠️ ${evt.message}`);
+            finalizeAI();
+            break;
+        }
+      }
+    }
+  } catch (e) {
+    finalizeAI();
+    appendToAI(`\n\n⚠️ ${e.message}`);
+    finalizeAI();
+  } finally {
+    S.streaming = false;
+    $sendBtn.disabled = false;
+    setThinking(false);
+    scrollBottom();
+  }
+}
+
+function qs(text) { $input.value = text; sendMsg(); }
+
+function clearAll() {
+  if (!confirm('Start a new project? This will clear the chat.')) return;
+  S.messages = [];
+  S.currentViewPath = null;
+  $msgs.innerHTML = `<div id="welcome">
+    <div class="wlc-logo">Vibe<span style="background:linear-gradient(135deg,#818cf8,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Craft</span></div>
+    <div class="wlc-sub">Describe your app and watch it come alive in the preview.</div>
+    <div class="wlc-chips">
+      <span class="wlc-chip" onclick="qs('Build a beautiful landing page for a SaaS product')">SaaS landing page</span>
+      <span class="wlc-chip" onclick="qs('Make a todo app with local storage and dark mode')">Todo app</span>
+      <span class="wlc-chip" onclick="qs('Create an animated portfolio page')">Portfolio</span>
+      <span class="wlc-chip" onclick="qs('Build a weather dashboard UI')">Weather dashboard</span>
+    </div>
+  </div>`;
+  setLive(false);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadTree();
+// Load preview
+$frame.addEventListener('load', () => {
+  $overlay.classList.add('hidden');
+  S.previewReady = true;
+  setLive(true);
+});
+$frame.src = '/preview?' + Date.now();
+</script>
+</body>
+</html>
